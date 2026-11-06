@@ -10,7 +10,7 @@ El joc **no porta cap lletra incorporada**: la llegeix de `lletra.txt`, que ha d
 - Sincronització **automàtica** (aproximada): cada vers es casa amb el tros de veu que correspon comptant síl·labes.
 - Sincronització **manual** (opcional): una línia que comença amb un temps surt just aleshores: `1:23 text` o `[1:23.5] text`.
 - `index.html?lletra` mostra a la pantalla d'inici la llista de versos amb el temps assignat, per revisar-los.
-- Surt a baix de la pantalla; «Raquel» i «Sans» es ressalten en rosa.
+- Surt a baix de la pantalla en un globus translúcid; «Raquel» i «Sans» es ressalten en rosa.
 
 ## «RA-QUEL SANS» a la tornada
 
