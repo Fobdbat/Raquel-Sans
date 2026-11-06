@@ -34,6 +34,7 @@ button[disabled]{opacity:.5}
 #cal-punts i.on{background:var(--accent)}
 .llista{display:grid;grid-template-columns:auto auto;gap:4px 18px;font-size:17px;text-align:left}
 .llista b{color:var(--accent);text-align:right}
+#lletra-dbg{max-height:34vh;overflow:auto;margin:0;padding:8px 12px;border-radius:10px;background:rgba(0,0,0,.45);color:#e9e3d4;font:12px/1.35 ui-monospace,Menlo,monospace;text-align:left;max-width:min(92vw,640px);touch-action:pan-y;user-select:text;-webkit-user-select:text}
 </style>
 </head>
 <body>
@@ -42,7 +43,7 @@ button[disabled]{opacity:.5}
 
 <section id="inici" class="pant">
   <h1>Raquel Sans<small>Miki Núñez &amp; The Tyets</small></h1>
-  <p>Corre pel món de la tele al ritme de la cançó. Quan l'anell es tanqui, <b>toca la pantalla</b> (o prem l'espai): a les cantonades per girar, i als cartells per saltar.</p>
+  <p>Corre pel món de la tele al ritme de la cançó. Quan l'anell es tanqui, <b>toca la pantalla</b> (o prem l'espai): a les cantonades per girar, i als cartells per saltar. A la tornada, toca a cada síl·laba de «RA-QUEL SANS».</p>
   <div id="barra"><i></i></div>
   <div id="estat">Carregant…</div>
   <div class="fila">
@@ -78,6 +79,7 @@ button[disabled]{opacity:.5}
 </section>
 
 <script src="data.js"></script>
+<script src="lletra.js"></script>
 <script src="joc.js"></script>
 </body>
 </html>

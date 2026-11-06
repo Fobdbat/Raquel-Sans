@@ -4,7 +4,8 @@ const $=id=>document.getElementById(id);
 const cv=$('c'),cx=cv.getContext('2d');
 const TILE=RS.T,SV=RS.S,C30=Math.sqrt(3)/2,VEL=RS.VEL,B=RS.B,O=RS.O,YR=.36,LEAD=.8,DUR=RS.DUR,FINAL_T=RS.FINAL_T;
 const ZN=RS.zones,AIR={G:0,S:B,L:2*B},ALT={S:7,L:12.5};
-const WIN={G:[.22,.18],S:[.18,.14],L:[.18,.14]};          // [aviat, tard] en segons
+const airOf=e=>e.k==='H'?e.air:AIR[e.k],altOf=e=>e.k==='H'?e.alt:ALT[e.k];
+const WIN={G:[.22,.18],S:[.18,.14],L:[.18,.14],H:[.095,.095]};          // [aviat, tard] en segons
 const PERFECTE=.07,DBG=/[?&]dt\b/.test(location.search);   // ?dt=1 mostra l'error de cada toc en ms (per comprovar el ritme a cada aparell)
 const ms=d=>(d>0?'+':d<0?'−':'')+Math.abs(Math.round(d*1000))+' ms';
 let W=0,H=0,DPR=1,zoom=.5,vign=null;
@@ -51,6 +52,11 @@ let wantZ=-1;
 function volTrams(zi){ // la zona actual i la següent a memòria; la resta es descarta
   if(zi===wantZ)return;wantZ=zi;for(const k of Object.keys(BMP)){const j=+k;if(j!==zi&&j!==zi+1)allibera(j)}
   bitmaps(zi);if(RS.geo[zi+1])bitmaps(zi+1)}
+let LYR=[];
+const fmtT=t=>Math.floor(t/60)+':'+(t%60<10?'0':'')+(t%60).toFixed(1);
+async function carregaLletra(){try{LYR=await RSLletra.carrega('lletra.txt',RS.frases||[])}catch(e){LYR=[]}
+  if(/[?&]lletra\b/.test(location.search)&&LYR.length){const pre=document.createElement('pre');pre.id='lletra-dbg';pre.textContent=LYR.map(l=>fmtT(l.t).padStart(6)+'  '+l.text).join('\n');$('inici').appendChild(pre)}
+  return LYR.length}
 let carregat=false;
 async function carrega(){
   const st=$('estat'),bar=$('barra').firstElementChild;
@@ -62,8 +68,8 @@ async function carrega(){
       const ab=new Uint8Array(got);let p=0;for(const c of parts){ab.set(c,p);p+=c.length;}buf0=ab.buffer}else buf0=await r.arrayBuffer();
     st.textContent='Preparant el so…';
     buf=await new Promise((res,rej)=>ac.decodeAudioData(buf0,res,rej));mesuraInici(buf);bar.style.width='88%';
-    st.textContent='Carregant els mons…';await bitmaps(1);bar.style.width='96%';await bitmaps(2);bar.style.width='100%';
-    carregat=true;st.textContent='Tot a punt.';$('b-joc').disabled=false;$('b-passeig').disabled=false;
+    st.textContent='Carregant els mons…';const nl=await carregaLletra();await bitmaps(1);bar.style.width='96%';await bitmaps(2);bar.style.width='100%';
+    carregat=true;st.textContent=nl?'Tot a punt · lletra carregada ('+nl+' versos)':'Tot a punt · sense lletra (falta lletra.txt)';$('b-joc').disabled=false;$('b-passeig').disabled=false;
     for(let z=3;z<=8;z++)fetchPack(z).catch(()=>{})            // la resta, en segon pla
   }catch(e){st.textContent="No s'ha pogut carregar. Torna a obrir la pàgina."}
 }
@@ -85,10 +91,11 @@ function formacio(zi){const L=ZN[zi].lead; // dx,dy: desplaçament en píxels de
   return[{id:HEROI[L[1]],dx:-78,dy:-12},{id:HEROI[L[2]],dx:78,dy:-12},{id:HEROI[L[0]],dx:0,dy:6}]}
 
 /* ============================ estat de joc ============================ */
-const EV=RS.events.map(e=>({t:e.t,k:e.k,z:e.z,b:e.b,st:0,pts:0,dt:0,perfect:false,g:null}));
+const EV=RS.events.map(e=>({t:e.t,k:e.k,z:e.z,b:e.b,auto:!!e.auto,air:(e.air||0)*B,alt:e.alt,syl:e.syl||'',hk:e.hk,st:e.auto?3:0,pts:0,dt:0,perfect:false,g:null}));
+const resetEv=e=>{e.st=e.auto?3:0;e.pts=0;e.perfect=false};
 const G={on:false,paused:false,mode:'joc',zr:0,ni:0,fail:null,score:0,combo:0,maxCombo:0,falls:0,fallsZ:{},cam:{x:0,y:0},snap:true,lastZi:-1,pops:[],puffs:[],conf:[],yr:YR,cd:-1,cal:false,fin:false,hits:0,perf:0,wipe:-9,assistMsg:0};
 function evGeo(e){if(e.g)return e.g;const zi=e.z,p=posZ(zi,e.t),dIn=posZ(zi,e.t-.002).d,dOut=posZ(zi,e.t+.002).d;
-  const g={x:p.x,y:p.y,dIn,dOut};if(e.k!=='G'){const q=posZ(zi,e.t+AIR[e.k]/2);g.ox=q.x;g.oy=q.y;g.od=q.d}return e.g=g}
+  const g={x:p.x,y:p.y,dIn,dOut};if(e.k!=='G'){const q=posZ(zi,e.t+airOf(e)/2);g.ox=q.x;g.oy=q.y;g.od=q.d}return e.g=g}
 const assist=zi=>1+.2*Math.min(2,Math.floor((G.fallsZ[zi]||0)/3));
 const winFor=e=>{const w=WIN[e.k],a=G.mode==='passeig'?1:assist(e.z);return[w[0]*a,w[1]*a]};
 function primerEv(zi){const t0=ZN[zi].t0-.01;let i=0;while(i<EV.length&&EV[i].t<t0)i++;return i}
@@ -96,36 +103,40 @@ function popup(txt,col,wx,wy,T){G.pops.push({t:T,txt,col,wx,wy})}
 function hit(e,dt,T){e.st=1;e.dt=dt;e.perfect=Math.abs(dt)<=PERFECTE;G.combo++;G.maxCombo=Math.max(G.maxCombo,G.combo);
   const m=1+Math.min(G.combo,20)*.05;e.pts=Math.round((e.perfect?150:100)*m);G.score+=e.pts;G.hits++;if(e.perfect)G.perf++;
   const g=evGeo(e),lab=e.perfect?'Perfecte!':(Math.abs(dt)>.11?(dt<0?'Aviat':'Tard'):'Bé');
+  if(e.k==='H'){popup(DBG?e.syl+' '+ms(dt):e.syl,e.perfect?'#ffe36b':'#ffffff',pX(g.x,g.y),pY(g.x,g.y,e.syl==='QUEL'?36:26),T);G.pops[G.pops.length-1].sz=17;
+    for(let i=0;i<5;i++)G.puffs.push({t:T,wx:pX(g.x,g.y),wy:pY(g.x,g.y,0),vx:(Math.random()-.5)*130,vy:-Math.random()*80-20,c:'#ff4ba0',life:.45});
+    if(e.syl==='SANS'&&EV.every(y=>y.hk!==e.hk||y.st===1)){G.score+=200;G.pops.push({t:T+.05,txt:'RAQUEL SANS! +200',col:'#ff7ab8',wx:pX(g.x,g.y),wy:pY(g.x,g.y,52),sz:28,dur:1.1})}return}
   popup(DBG?lab+' '+ms(dt):lab,e.perfect?'#ffe36b':(lab==='Bé'?'#ffffff':'#ff9a6b'),pX(g.x,g.y),pY(g.x,g.y,22),T);
   for(let i=0;i<7;i++)G.puffs.push({t:T,wx:pX(g.x,g.y),wy:pY(g.x,g.y,0),vx:(Math.random()-.5)*160,vy:-Math.random()*90-20,c:e.k==='G'?'#3bd0ff':'#ffe36b',life:.5})}
+function missH(e,T){if(e.st!==0)return;e.st=2;G.combo=0;const g=evGeo(e);popup(e.syl,'#c9bfd8',pX(g.x,g.y),pY(g.x,g.y,e.syl==='QUEL'?36:26),T);G.pops[G.pops.length-1].sz=17}
 function falla(e,T){if(G.fail||G.mode==='passeig')return;e.st=2;G.fail={t:Math.max(T,e.t),e,k:e.k==='G'?'gir':'salt'};G.falls++;G.combo=0;G.fallsZ[e.z]=(G.fallsZ[e.z]||0)+1;
   if(G.fallsZ[e.z]%3===0)G.assistMsg=T}
 function judgeTap(T){let best=null,bd=9;for(let i=G.ni;i<EV.length;i++){const e=EV[i];if(e.st!==0)continue;if(e.t>T+.7)break;const d=Math.abs(T-e.t);if(d<bd){bd=d;best=e}}
   if(!best)return false;const dt=T-best.t,w=winFor(best);
   if(dt>=-w[0]&&dt<=w[1]){hit(best,dt,T);return true}
-  if(dt<-w[0]&&dt>=-(w[0]+.12)){falla(best,T);return true}
+  if(dt<-w[0]&&dt>=-(w[0]+.12)){if(best.k==='H')missH(best,T);else falla(best,T);return true}
   return false}
 function update(T){
   while(G.ni<EV.length&&EV[G.ni].st!==0)G.ni++;
   if(G.fail){if(T>=G.fail.t+1.05&&window.__vt===undefined)reinicia(G.fail.e.z);return}
   for(let i=G.ni;i<EV.length;i++){const e=EV[i];if(e.t>T+1)break;if(e.st!==0)continue;
     if(G.mode==='passeig'){const j=Math.sin(e.b*2.399)*.018;if(T>=e.t+j)hit(e,j,T)}
-    else{const w=winFor(e);if(T>e.t+w[1]){falla(e,T);break}}}
+    else{const w=winFor(e);if(T>e.t+w[1]){if(e.k==='H')missH(e,T);else{falla(e,T);break}}}}
   if(T>=DUR-.02&&!G.fin)acaba()
 }
 function reinicia(zi){
   const z=ZN[zi],off=zi===0?0:Math.max(0,z.t0-2.4);
-  for(const e of EV)if(e.t>=z.t0-.01){if(e.st===1){G.score-=e.pts;G.hits--;if(e.perfect)G.perf--}e.st=0;e.pts=0;e.perfect=false}
+  for(const e of EV)if(e.t>=z.t0-.01){if(e.st===1){G.score-=e.pts;G.hits--;if(e.perfect)G.perf--}resetEv(e)}
   G.score=Math.max(0,G.score);G.conf=[];G.zr=zi;G.fail=null;G.ni=primerEv(zi);G.snap=true;G.pops=[];G.puffs=[];G.combo=0;G.lastZi=-1;G.wipe=zi>=1?off-.35:-9;G.cd=zi>=1?zi:-1;
   if(window.__vt===undefined)sona(off,.35)
 }
 function acaba(){G.fin=true;G.on=false;atura(false);$('pau').hidden=true;
-  const tot=EV.length;$('fi-stats').innerHTML=G.mode==='passeig'?`<span>Mode</span><b>Passeig</b><span>Zones</span><b>${ZN.length-1}</b>`:
-    `<span>Punts</span><b>${G.score}</b><span>Girs i salts encertats</span><b>${G.hits} / ${tot}</b><span>Perfectes</span><b>${G.perf}</b><span>Millor ratxa</span><b>${G.maxCombo}</b><span>Caigudes</span><b>${G.falls}</b>`;
+  const tot=EV.filter(e=>!e.auto).length,HK=[...new Set(EV.filter(e=>e.k==='H').map(e=>e.hk))],hkOk=HK.filter(h=>EV.every(e=>e.hk!==h||e.st===1)).length;$('fi-stats').innerHTML=G.mode==='passeig'?`<span>Mode</span><b>Passeig</b><span>Zones</span><b>${ZN.length-1}</b>`:
+    `<span>Punts</span><b>${G.score}</b><span>Girs i salts encertats</span><b>${G.hits} / ${tot}</b><span>Perfectes</span><b>${G.perf}</b><span>Millor ratxa</span><b>${G.maxCombo}</b><span>Caigudes</span><b>${G.falls}</b><span>«Raquel Sans» perfectes</span><b>${hkOk} / ${HK.length}</b>`;
   $('fi').hidden=false}
 function comenca(mode){
   if(!carregat)return;ac.resume&&ac.resume();$('inici').hidden=true;$('fi').hidden=true;$('pausa').hidden=true;$('calibra').hidden=true;
-  G.mode=mode;G.score=0;G.combo=0;G.maxCombo=0;G.falls=0;G.hits=0;G.perf=0;G.fallsZ={};G.fin=false;G.conf=[];for(const e of EV){e.st=0;e.pts=0;e.perfect=false}
+  G.mode=mode;G.score=0;G.combo=0;G.maxCombo=0;G.falls=0;G.hits=0;G.perf=0;G.fallsZ={};G.fin=false;G.conf=[];for(const e of EV)resetEv(e);
   G.on=true;G.paused=false;reinicia(0);$('pau').hidden=false}
 function pausa(){if(!G.on||G.paused||G.fin)return;G.pauseT=tNow();G.paused=true;atura(true);$('b-mode').textContent=G.mode==='joc'?'Passa a «Passeig»':'Passa a «Joc»';$('pausa').hidden=false}
 function continua(){$('pausa').hidden=true;G.paused=false;ac.resume&&ac.resume();reinicia(Math.max(zoneAt(Math.max(0,G.pauseT||0)),G.zr))}
@@ -146,7 +157,7 @@ function capsa(x0,y0,w,d,h,cTop,cX,cY){ // paral·lelepípede amb 3 cares visibl
   poly([P3(x0,y0,h),P3(x0+w,y0,h),P3(x0+w,y0+d,h),P3(x0,y0+d,h)],cTop);
   poly([P3(x0+w,y0,0),P3(x0+w,y0+d,0),P3(x0+w,y0+d,h),P3(x0+w,y0,h)],cX);
   poly([P3(x0,y0+d,0),P3(x0+w,y0+d,0),P3(x0+w,y0+d,h),P3(x0,y0+d,h)],cY)}
-const COLK={G:'#3bd0ff',S:'#7dff6a',L:'#ffa23b'};
+const COLK={G:'#3bd0ff',S:'#7dff6a',L:'#ffa23b',H:'#ff4ba0'};
 function fletxa(x,y,dx,dy,l,fill){ // fletxa al terra
   const px=-dy,py=dx,pts=[[x-dx*l*.7,y-dy*l*.7],[x-dx*l*.7+px*l*.28,y-dy*l*.7+py*l*.28],[x+dx*l*.1+px*l*.28,y+dy*l*.1+py*l*.28],[x+dx*l*.1+px*l*.6,y+dy*l*.1+py*l*.6],[x+dx*l*.9,y+dy*l*.9],[x+dx*l*.1-px*l*.6,y+dy*l*.1-py*l*.6],[x+dx*l*.1-px*l*.28,y+dy*l*.1-py*l*.28],[x-dx*l*.7-px*l*.28,y-dy*l*.7-py*l*.28]];
   poly(pts.map(q=>P3(q[0],q[1],.2)),fill)}
@@ -155,6 +166,10 @@ function dibuixaPad(e,T,zi,bp){
   const g=evGeo(e),u=(e.t-T)/.8,col=COLK[e.k];
   const viu=e.st===0||(T-e.t<.35);if(!viu)return;
   const pulse=1+.08*(1-bp);
+  if(e.k==='H'){if(e.st===0||e.st===2){const hs=2.3*pulse;poly(rombe(g.x,g.y,hs,.1),col+'66',col,2.6,1);
+      const q=P3(g.x,g.y,9+(e.syl==='QUEL'?5:0)),px=Math.round(16*Math.max(.9,zoom*1.7));txt(e.syl,sx(q[0]),sy(q[1]),px,e.st===2?'#c9bfd8':'#ffffff',{st:'rgba(120,10,70,.9)'});
+      if(u>0&&u<=1){cx.globalAlpha=.95-.4*u;poly(rombe(g.x,g.y,hs*(1+1.6*u),.3),null,col,4-2*u,1);cx.globalAlpha=1}}
+    else if(e.st===1){const k=(T-e.t)/.35;cx.globalAlpha=1-k;poly(rombe(g.x,g.y,2.4+k*4,.3),null,e.perfect?'#ffe36b':'#ffffff',3.5);cx.globalAlpha=1}return}
   if(e.st===0||e.st===2){
     const alt=e.k==='G'?3.8:3.4;
     poly(rombe(g.x,g.y,alt*pulse,.1),col+'55',col,2.6,1);
@@ -180,8 +195,8 @@ function sprite(id,nom,wx,wy,o){o=o||{};const m=RS.spr.atles[id]&&RS.spr.atles[i
 /* posició d'un personatge de la formació a l'instant T (té en compte salts i caigudes) */
 function personatge(zi,T,fm,Tref){
   const p=posZ(zi,T);let x=p.x,y=p.y,z=0,rot=0,a=1,d=p.d,mode='run',sq=1;
-  for(let i=Math.max(0,G.ni-3);i<EV.length;i++){const e=EV[i];if(e.t>T+.1)break;if(e.k==='G'||e.st!==1)continue;const air=AIR[e.k];
-    if(T>=e.t&&T<=e.t+air){const u=(T-e.t)/air;z=ALT[e.k]*4*u*(1-u);mode='salt'}}
+  for(let i=Math.max(0,G.ni-3);i<EV.length;i++){const e=EV[i];if(e.t>T+.1)break;if(e.k==='G'||e.st!==1)continue;const air=airOf(e);
+    if(T>=e.t&&T<=e.t+air){const u=(T-e.t)/air;z=altOf(e)*4*u*(1-u);mode='salt'}}
   const f=G.fail;
   if(f&&T>=f.e.t){const e=f.e,g=evGeo(e);
     if(f.k==='gir'){const dv=DV(g.dIn),s=VEL*(T-e.t);x=g.x+dv[0]*s;y=g.y+dv[1]*s;d=g.dIn;const tf=5.4/VEL;
@@ -217,7 +232,7 @@ function dibuixaIntro(T){
 function dibuixaPartic(T){
   for(const p of G.puffs){const a=1-(T-p.t)/p.life;if(a<=0)continue;const q=T-p.t;cx.globalAlpha=a;cx.fillStyle=p.c;cx.beginPath();cx.arc(sx(p.wx+p.vx*q),sy(p.wy+p.vy*q+q*q*160),Math.max(1,5*zoom*a+1),0,6.3);cx.fill()}cx.globalAlpha=1;
   G.puffs=G.puffs.filter(p=>T-p.t<p.life)}
-function dibuixaPops(T){for(const p of G.pops){const q=T-p.t;if(q<0||q>.75)continue;cx.globalAlpha=1-q/.75;txt(p.txt,sx(p.wx),sy(p.wy)-q*50*zoom,Math.round(22*Math.max(.9,zoom*1.6)),p.col);cx.globalAlpha=1}G.pops=G.pops.filter(p=>T-p.t<.8)}
+function dibuixaPops(T){for(const p of G.pops){const d=p.dur||.75,q=T-p.t;if(q<0||q>d)continue;cx.globalAlpha=Math.min(1,(1-q/d)*1.6);txt(p.txt,sx(p.wx),sy(p.wy)-q*50*zoom,Math.round((p.sz||22)*Math.max(.9,zoom*1.6)),p.col);cx.globalAlpha=1}G.pops=G.pops.filter(p=>T-p.t<(p.dur||.75)+.05)}
 function confeti(T,dt){const cols=['#ff4ba0','#3bd0ff','#ffe36b','#9b5cff','#7dff6a','#ffffff'];
   if(T>=FINAL_T&&T<DUR+2){for(let i=0;i<4;i++)G.conf.push({x:Math.random()*W,y:-10,vx:(Math.random()-.5)*60,vy:90+Math.random()*120,c:cols[(Math.random()*cols.length)|0],r:Math.random()*6,s:3+Math.random()*4,w:Math.random()*6})}
   for(const c of G.conf){c.x+=c.vx*dt+Math.sin(c.w+=dt*5)*.8;c.y+=c.vy*dt;c.r+=dt*6;cx.fillStyle=c.c;cx.save();cx.translate(c.x,c.y);cx.rotate(c.r);cx.fillRect(-c.s,-c.s/2,c.s*2,c.s);cx.restore()}
@@ -235,7 +250,7 @@ function render(T){
     // pads i anells (a terra)
     for(let i=Math.max(0,G.ni-2);i<EV.length;i++){const e=EV[i];if(e.z!==zi)continue;if(e.t>T+1.0)break;if(e.t<T-.5)continue;dibuixaPad(e,T,zi,bp)}
     // obstacles
-    for(let i=Math.max(0,G.ni-4);i<EV.length;i++){const e=EV[i];if(e.t>T+2.4)break;if(e.z!==zi||e.k==='G'||e.t<T-1.2)continue;items.push(obstacle(e,T,zi))}
+    for(let i=Math.max(0,G.ni-4);i<EV.length;i++){const e=EV[i];if(e.t>T+2.4)break;if(e.z!==zi||e.k==='G'||e.k==='H'||e.t<T-1.2)continue;items.push(obstacle(e,T,zi))}
     // personatges
     const pre=T<z.t0;
     if(!fi){for(const f of fm){const h=personatge(zi,Math.max(T,z.t0*0+T),f);items.push({depth:h.x+h.y+(h.dy>0?.05:0),f:()=>dibuixaPers(h,T,zi,pre)})}}
@@ -259,6 +274,16 @@ function render(T){
   if(T<DUR&&zi>=1)confeti(T,dt);
   hud(T,zi);
 }
+function lletraHud(T){
+  const l=LYR.length?RSLletra.actual(LYR,T):null;if(!l)return;
+  const a=Math.max(0,Math.min(1,(T-l.t)/.15+.05,(l.te-T)/.25)),maxw=W-28;let px=Math.round(Math.max(16,Math.min(30,W/30))),lines=[l.text];
+  cx.save();cx.font='800 '+px+'px system-ui,sans-serif';let w0=cx.measureText(l.text).width;
+  if(w0>maxw){px=Math.max(13,Math.floor(px*maxw/w0));cx.font='800 '+px+'px system-ui,sans-serif';w0=cx.measureText(l.text).width}
+  if(w0>maxw){const mid=l.text.length/2;let c=-1,bd=1e9;for(let i=0;i<l.text.length;i++)if(l.text[i]===' '&&Math.abs(i-mid)<bd){bd=Math.abs(i-mid);c=i}if(c>0)lines=[l.text.slice(0,c),l.text.slice(c+1)]}
+  const lw=lines.map(s=>cx.measureText(s).width),bw=Math.min(maxw,Math.max(...lw))+px*1.4,bh=lines.length*px*1.28+px*.7,bx=(W-bw)/2,by=H-bh-Math.max(14,H*.04);
+  cx.globalAlpha=a;cx.fillStyle='rgba(10,8,20,.8)';rr(bx,by,bw,bh,px*.5);cx.fill();cx.lineWidth=2;cx.strokeStyle='rgba(255,210,63,.85)';cx.stroke();cx.textBaseline='middle';cx.textAlign='left';
+  lines.forEach((s,i)=>{let x=(W-lw[i])/2;const y=by+px*.35+(i+.5)*px*1.28;for(const w of s.split(/(\s+)/)){const ww=cx.measureText(w).width;cx.fillStyle=/raquel|sans/i.test(w)?'#ff7ab8':'#fff7e6';cx.fillText(w,x,y);x+=ww}});
+  cx.restore()}
 function hud(T,zi){
   if(!G.on)return;
   // barra de progrés amb marques de zona
@@ -271,7 +296,9 @@ function hud(T,zi){
   if(G.assistMsg&&T-G.assistMsg<3.5&&T>=G.assistMsg)txt('Ajuda activada: finestres una mica més amples',W/2,H-60,15,'#7dff6a');
   // consells del primer tram
   if(zi===1&&G.mode==='joc'){for(let i=G.ni;i<Math.min(EV.length,G.ni+1);i++){const e=EV[i];if(e.z===1&&e.st===0&&e.t-T<1.1&&e.t-T>-.1&&G.hits<4)txt(e.k==='G'?'TOCA!':'TOCA PER SALTAR!',W/2,H*.78,26,'#ffffff')}}
+  if(G.mode==='joc'&&!G.fail){const hs=G.hkSeen||(G.hkSeen=new Set());for(let i=G.ni;i<Math.min(EV.length,G.ni+3);i++){const e=EV[i];if(e.k==='H'&&e.syl==='RA'&&e.st===0&&e.t-T<1.6&&e.t-T>-.1&&(hs.size<2||hs.has(e.hk))){txt('TOCA A CADA SÍL·LABA: RA-QUEL SANS!',W/2,H*.2,Math.round(Math.min(26,W/24)),'#ffffff');if(e.t-T<.15)hs.add(e.hk);break}}}
   if(G.fail&&T>=G.fail.t+.12)txt(G.fail.k==='gir'?'Has caigut!':'Has ensopegat!',W/2,H*.45,34,'#ff6b6b');
+  lletraHud(T)
 }
 function frame(){
   requestAnimationFrame(frame);
@@ -322,8 +349,8 @@ addEventListener('keydown',ev=>{if(CAL.actiu&&(ev.code==='Space'||ev.code==='Ent
 $('b-aj-menys').onclick=()=>desaAjust(AJUST-.01);$('b-aj-mes').onclick=()=>desaAjust(AJUST+.01);$('aj-val').onclick=()=>desaAjust(0);pintaAjust();
 
 /* ============================ proves (temps virtual) ============================ */
-window.__rs={G,EV,ZN,RS,
-  prepara(mode){G.mode=mode||'joc';G.score=0;G.combo=0;G.falls=0;G.hits=0;G.perf=0;G.fallsZ={};G.fin=false;for(const e of EV){e.st=0;e.pts=0;e.perfect=false}G.on=true;G.paused=false;reinicia(0)},
+window.__rs={G,EV,ZN,RS,get LYR(){return LYR},setLletra(t){LYR=RSLletra.llegeix(t,RS.frases||[]);return LYR},
+  prepara(mode){G.mode=mode||'joc';G.score=0;G.combo=0;G.falls=0;G.hits=0;G.perf=0;G.fallsZ={};G.fin=false;for(const e of EV)resetEv(e);G.on=true;G.paused=false;reinicia(0)},
   async carregaMons(){for(let z=1;z<=8;z++)await bitmaps(z)},
   pas(T){window.__vt=T;update(T);cx.setTransform(DPR,0,0,DPR,0,0);render(T)},
   toca(T){window.__vt=T;return judgeTap(T)},
